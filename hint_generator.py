@@ -9,7 +9,7 @@ import copy
 
 import numpy as np
 import torch
-
+import pdb
 
 class RandomHintGenerator:
     '''
@@ -40,6 +40,7 @@ class RandomHintGenerator:
             np.zeros(num_hint),
         ])
         np.random.shuffle(hint)
+
         return hint
 
 
@@ -84,3 +85,10 @@ class InteractiveHintGenerator:
         self.hint[coord_x, coord_y] = 0
 
         return copy.deepcopy(self.hint), torch.tensor((self.coord_xs, self.coord_ys)).T
+
+
+if __name__ == '__main__':
+    g = RandomHintGenerator(256)
+    hint = g()
+    print(g)
+    pdb.set_trace()

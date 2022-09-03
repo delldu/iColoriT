@@ -29,16 +29,16 @@ from tqdm import tqdm
 import modeling
 from datasets import build_fixed_validation_dataset
 from utils import lab2rgb, psnr, rgb2lab, seed_worker
-
+import pdb
 
 def get_args():
     parser = argparse.ArgumentParser('Infer Colorization', add_help=False)
     # For evaluation
-    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='checkpoint.pth')
+    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='models/icolorit_base_4ch_patch16_224.pth')
     parser.add_argument('--model_args_path', type=str, help='args.pkl path of model', default='')
-    parser.add_argument('--val_data_path', default='data/val/images', type=str, help='validation dataset path')
+    parser.add_argument('--val_data_path', default='data/val/', type=str, help='validation dataset path')
     parser.add_argument('--val_hint_dir', type=str, help='hint directory for fixed validation', default='data/hint')
-    parser.add_argument('--pred_dir', type=str, default=None, help='save all prediction here')
+    parser.add_argument('--pred_dir', type=str, default="output", help='save all prediction here')
     parser.add_argument('--gray_file_list_txt', type=str, default='', help='use gray file list to exclude them')
     parser.add_argument('--return_name', action='store_true', help='return name for saving (True for test)')
     parser.add_argument('--no_return_name', action='store_false', dest='return_name', help='')
@@ -47,7 +47,7 @@ def get_args():
     # Dataset parameters
     parser.add_argument('--input_size', default=224, type=int, help='images input size for backbone')
     parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--pin_mem', action='store_true', help='Pin CPU memory in DataLoader')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem', help='')
     parser.set_defaults(pin_mem=True)
@@ -82,7 +82,7 @@ def get_args():
             args.model_path = os.path.join(args.model_path, f'checkpoint-{latest_ckpt}.pth')
     print(f'Load checkpoint: {args.model_path}')
 
-    if args.model_args_path:
+    if args.model_args_path: # args.pkl
         with open(args.model_args_path, 'rb') as f:
             train_args = vars(pickle.load(f))
             model_keys = ['model', 'use_rpb', 'head_mode', 'drop_path', 'mask_cent', 'avg_hint']
@@ -104,15 +104,37 @@ def get_args():
 def get_model(args):
     print(f"Creating model: {args.model}")
     model = create_model(
-        args.model,
+        args.model, # icolorit_base_4ch_patch16_224
         pretrained=False,
-        drop_path_rate=args.drop_path,
+        drop_path_rate=args.drop_path, # 0
         drop_block_rate=None,
-        use_rpb=args.use_rpb,
-        avg_hint=args.avg_hint,
-        head_mode=args.head_mode,
+        use_rpb=args.use_rpb, # True -- relative positional bias
+        avg_hint=args.avg_hint, # True -- average hint
+        head_mode=args.head_mode, # cnn
         mask_cent=args.mask_cent,
     )
+    # model -- icolorit_base_4ch_patch16_224, IColoriT
+
+    # checkpoint = torch.load("models/icolorit_base_4ch_patch16_224.pth")
+    # checkpoint = torch.load("models/icolorit_small_4ch_patch16_224.pth")
+    checkpoint = torch.load("models/icolorit_tiny_4ch_patch16_224.pth")
+    # Namespace(
+    #     model='colorit_tiny_4ch_patch16_224', 
+    #     mask_root_dir='2022ECCV_colorization/ctest10k_mask/1234', 
+    #     num_hint_range=[0, 128], hint_size=2, 
+    #     input_size=224, drop_path=0.0, 
+    #     masked_position_generator='RandomMaskingGenerator', 
+    #     avg_hint=True, use_rpb=True, blk_mode='default', head_mode='cnn', 
+    #     mask_cent=False, mask_n_q=4, mask_mode='uniform', mask_r=4, mask_p=0.125, 
+    #     data_path='ImageNet2012/train', 
+    #     val_data_path='2022ECCV_colorization/ctest10k', 
+    #     imagenet_default_mean_and_std=True, val_hint_list=[0, 10, 100], 
+    #     output_dir='./output/colorit_tiny_4ch_patch16_224/rpb_cnnhead', 
+    #     mask_dirs=['2022ECCV_colorization/ctest10k_mask/1234/h2:0',
+    #         '2022ECCV_colorization/ctest10k_mask/1234/h2:10',
+    #         '2022ECCV_colorization/ctest10k_mask/1234/h2:100'],
+    #     window_size=(14, 14), patch_size=(16, 16))
+
     return model
 
 
@@ -135,6 +157,21 @@ def main(args):
     total_shown = 0
 
     args.hint_dirs = [osp.join(args.val_hint_dir, f'h{args.hint_size}-n{i}') for i in args.val_hint_list]
+
+    # (Pdb) pp args
+    # Namespace(model_path='models/icolorit_base_4ch_patch16_224.pth', 
+    #     model_args_path='', val_data_path='data/val/', val_hint_dir='data/hint', 
+    #     pred_dir='output', gray_file_list_txt='', return_name=True, 
+    #     input_size=224, batch_size=32, num_workers=4, pin_mem=True, 
+    #     model='icolorit_base_4ch_patch16_224', use_rpb=True, 
+    #     head_mode='cnn', drop_path=0.0, mask_cent=False, device='cuda', 
+    #     hint_size=2, avg_hint=True, val_hint_list=[0, 1, 2, 5, 10, 20, 50, 100, 200], 
+    #     window_size=(14, 14), patch_size=(16, 16), 
+    #     hint_dirs=['data/hint/h2-n0', 'data/hint/h2-n1', 'data/hint/h2-n2', 
+    #     'data/hint/h2-n5', 'data/hint/h2-n10', 'data/hint/h2-n20', 'data/hint/h2-n50', 
+    #     'data/hint/h2-n100', 'data/hint/h2-n200'])
+
+
     dataset_val = build_fixed_validation_dataset(args)
     data_loader_val = DataLoader(
         dataset_val,
