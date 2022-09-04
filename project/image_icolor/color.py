@@ -9,6 +9,7 @@
 # ************************************************************************************/
 #
 import pdb
+from functools import partial
 
 import math
 import numpy as np
@@ -19,30 +20,12 @@ import torch.nn.functional as F
 
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from timm.models.layers import trunc_normal_ as __call_trunc_normal_
 
 from . import data
 
-class Generator(nn.Module):
-    """
-    # L + ab + mask
-    input_nc = 1
-    output_nc = 2
-    num_in = input_nc + output_nc + 1
-    norm_layer = color.get_norm_layer(norm_type="batch")
-    """
-
-    def forward(self, rgba):
-        # input = torch.cat((input_A, input_B, mask_B), dim=1)
-        input = data.rgba2lab(rgba)
-        lab_l = input[:, 0:1, :, :]
-        # lab_m = input[:, 3:4, :, :]
-
-        out_reg = self.model_out(conv10_2)
-
-        # out_class
-        output = data.Lab2rgb(lab_l, out_reg)
-        return output.clamp(0.0, 1.0)
-
+def trunc_normal_(tensor, mean=0., std=1.):
+    __call_trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -68,13 +51,20 @@ class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, attn_drop=0.,
                  proj_drop=0., attn_head_dim=None, window_size=14):
         super().__init__()
+        # dim = 384
+        # num_heads = 6
+        # attn_drop = 0.0
+        # proj_drop = 0.0
+        # attn_head_dim = None
+        # window_size = 14
+
         self.num_heads = num_heads
         head_dim = dim // num_heads
         if attn_head_dim is not None:
             head_dim = attn_head_dim
-        all_head_dim = head_dim * self.num_heads
-        self.scale = head_dim ** -0.5
+        all_head_dim = head_dim * self.num_heads # 384
 
+        self.scale = head_dim ** -0.5
         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
         self.q_bias = nn.Parameter(torch.zeros(all_head_dim))
         self.v_bias = nn.Parameter(torch.zeros(all_head_dim))
@@ -82,7 +72,7 @@ class Attention(nn.Module):
         # relative positional bias option
         self.window_size = window_size
         self.rpb_table = nn.Parameter(torch.zeros((2 * window_size - 1) * (2 * window_size - 1), num_heads))
-        # trunc_normal_(self.rpb_table, std=.02)
+        trunc_normal_(self.rpb_table, std=.02)
 
         coords_h = torch.arange(window_size)
         coords_w = torch.arange(window_size)
@@ -139,33 +129,30 @@ class Block(nn.Module):
             window_size=window_size)
 
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        # self.drop_path = nn.Dropout(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = nn.Dropout(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
-        # x = x + self.drop_path(self.attn(self.norm1(x)))
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
-        x = x + self.attn(self.norm1(x))
-        x = x + self.mlp(self.norm2(x))
-
+        x = x + self.drop_path(self.attn(self.norm1(x)))
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
 
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding
     """
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
+    def __init__(self, img_size=224, patch_size=16, in_chans=4, embed_dim=384):
         super().__init__()
-        num_patches = (img_size // patch_size) * (img_size // patch_size)
+        num_patches = (img_size // patch_size) * (img_size // patch_size) # 196
         self.patch_shape = (img_size // patch_size, img_size // patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
-        # self.proj -- Conv2d(4, 192, kernel_size=(16, 16), stride=(16, 16))
+        # self.proj -- Conv2d(4, 384, kernel_size=(16, 16), stride=(16, 16))
 
     def forward(self, x):
         # x.size() -- torch.Size([10, 4, 224, 224])
@@ -190,9 +177,10 @@ class CnnHead(nn.Module):
         # self = CnnHead(
         #   (head): Conv2d(192, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), padding_mode=reflect)
         # )
-        # embed_dim = 192
+        # embed_dim = 384
         # num_classes = 512
         # window_size = 14
+
         self.embed_dim = embed_dim
         self.num_classes = num_classes
         self.window_size = window_size
@@ -208,11 +196,7 @@ class CnnHead(nn.Module):
 
 class IColoriT(nn.Module):
     """ Vision Transformer with support for patch or hybrid CNN input stage
-    
-    Small configuration:
-        embed_dim=384,
-        depth=12,
-        num_heads=6,
+    Default is small configuration:
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=4, num_classes=512, 
@@ -230,11 +214,11 @@ class IColoriT(nn.Module):
 
         self.patch_embed = PatchEmbed(img_size=img_size, patch_size=patch_size,
                                       in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches  # 2
+        num_patches = self.patch_embed.num_patches
 
-        self.pos_embed = get_sinusoid_encoding_table(num_patches, embed_dim)
-
+        self.pos_embed = get_sinusoid_encoding_table(num_patches, embed_dim) # # 196, 384
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+
         self.blocks = nn.ModuleList([Block(
             dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, 
             drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
@@ -243,9 +227,7 @@ class IColoriT(nn.Module):
 
         self.norm = norm_layer(embed_dim)
         self.head = CnnHead(embed_dim, num_classes, window_size=img_size // patch_size)
-
         self.tanh = nn.Tanh()
-
         self.apply(self._init_weights)
 
 
@@ -258,47 +240,15 @@ class IColoriT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    # def forward_features(self, x, mask):
-    #     # (Pdb) x.size() -- torch.Size([10, 3, 224, 224])
-    #     # x.max(), x.min() -- 0.6790, -0.5000
-
-    #     # (Pdb) mask.size() -- torch.Size([10, 12544]), most of mask is True
-    #     # 224 * 224 /4 -- 12544
-
-    #     # mask is 1D of 2D if 2D
-    #     B, _, H, W = x.shape
-    #     assert mask.dim() == 2, f'Check the mask dimension mask.dim() == 2 but {mask.dim()}.'
-
-    #     _, L = mask.shape
-    #     # assume square inputs
-    #     hint_size = int(math.sqrt(H * W // L)) # -- 2
-    #     _device = '.cuda' if x.device.type == 'cuda' else ''
-
-    #     # hint location = 0, non-hint location = 1
-    #     mask = torch.reshape(mask, (B, H // hint_size, W // hint_size))
-    #     _mask = mask.unsqueeze(1).type(f'torch{_device}.FloatTensor')
-    #     _full_mask = F.interpolate(_mask, scale_factor=hint_size)  # Needs to be Float
-    #     full_mask = _full_mask.type(f'torch{_device}.BoolTensor')
-
-    #     # mask ab channels
-    #     _avg_x = F.interpolate(x, size=(H // hint_size, W // hint_size), mode='bilinear')
-    #     _avg_x[:, 1, :, :].masked_fill_(mask.squeeze(1), 0)
-    #     _avg_x[:, 2, :, :].masked_fill_(mask.squeeze(1), 0)
-    #     x_ab = F.interpolate(_avg_x, scale_factor=hint_size, mode='nearest')[:, 1:, :, :]
-    #     x = torch.cat((x[:, 0, :, :].unsqueeze(1), x_ab), dim=1)
-
-    #     if self.in_chans == 4: # True
-    #         x = torch.cat((x, 1.0 - _full_mask), dim=1)
-
-
     def forward_features(self, x):
         x = self.patch_embed(x)
-        x = x + self.pos_embed.type_as(x).to(x.device).clone().detach()  # (B, 14*14, 768)
+        # x = x + self.pos_embed.type_as(x).to(x.device).clone().detach()  # (B, 14*14, 768)
+        x = x + self.pos_embed.to(x.device)  # (B, 14*14, 768)
 
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
-        # x.size() -- torch.Size([10, 196, 192])
+        # x.size() -- torch.Size([10, 196, 384])
 
         return x
 
@@ -310,9 +260,7 @@ class IColoriT(nn.Module):
         fake_lab = data.rgba2lab(rgba) # with mask
         lab_l = fake_lab[:, 0:1, :, :]
 
-
-        # (Pdb) x.size(), mask.size()
-        # (torch.Size([10, 3, 224, 224]), torch.Size([10, 12544]))
+        # (torch.Size([10, 4, 224, 224])
         fake_lab = self.forward_features(fake_lab) # torch.Size([10, 196, 192])
         fake_lab = self.head(fake_lab)
         fake_lab = self.tanh(fake_lab)
@@ -323,5 +271,27 @@ class IColoriT(nn.Module):
                         h=h, w=w, p1=self.patch_size, p2=self.patch_size)
 
         output = data.Lab2rgb(lab_l, pred_ab)
-        return output
+        return output.clamp(0.0, 1.0)
 
+
+# def base_model():
+#     model = IColoriT(
+#         embed_dim=768,
+#         num_heads=12,
+#         )
+#     return model
+
+# def small_model():
+#     model = IColoriT(
+#         embed_dim=384,
+#         num_heads=6,
+#         )
+#     return model
+
+# def tiny_model():
+#     model = IColoriT(
+#         embed_dim=192,
+#         num_heads=3,
+#         )
+
+#     return model

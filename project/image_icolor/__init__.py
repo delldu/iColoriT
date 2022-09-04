@@ -23,7 +23,7 @@ from . import data, color
 
 import pdb
 
-ICOLOR_ZEROPAD_TIMES = 8
+ICOLOR_ZEROPAD_TIMES = 16
 
 
 def get_model():
