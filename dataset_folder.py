@@ -15,7 +15,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.datasets.vision import VisionDataset
-
+import pdb
 
 def has_file_allowed_extension(filename: str, extensions: Tuple[str, ...]) -> bool:
     """Checks if a file is an allowed extension.
@@ -266,7 +266,7 @@ class ImageWithFixedHint(Dataset):
 
         # do not use gray images
         self.gray_imgs = []
-        if gray_file_list_txt:
+        if gray_file_list_txt: # gray_file_list_txt -- ''
             with open(gray_file_list_txt, 'r') as f:
                 self.gray_imgs = [osp.splitext(osp.basename(i))[0] for i in f.readlines()]
 
@@ -279,9 +279,20 @@ class ImageWithFixedHint(Dataset):
             self.hint_list = sorted(self.hint_list)
 
             # check name
-            assert len(self.img_list) == len(self.hint_list)
+            s_list = []
+            for fname in self.img_list:
+                ftxt = osp.splitext(fname)[0] + ".txt"
+                if ftxt in self.hint_list:
+                    s_list.append(fname)
+            self.img_list = s_list
+
+            assert len(self.img_list) == len(self.hint_list) # 50000 -- 10000
             for img_f, hint_f in zip(self.img_list, self.hint_list):
                 assert osp.splitext(img_f)[0] == osp.splitext(hint_f)[0]
+
+        # xxxx8888 for debug
+        self.img_list = self.img_list[0:10]
+        self.hint_list = self.hint_list[0:10]
 
     def __len__(self):
         return len(self.img_list)
@@ -329,7 +340,6 @@ class ImageWithFixedHintAndCoord(Dataset):
             self.hint_list = [file for file in os.listdir(hint_dir)
                               if file.endswith('.txt')]
             self.hint_list = sorted(self.hint_list)
-
             # assertion
             assert len(self.img_list) == len(self.hint_list)
             for img_f, hint_f in zip(self.img_list, self.hint_list):

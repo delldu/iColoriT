@@ -34,7 +34,7 @@ import pdb
 def get_args():
     parser = argparse.ArgumentParser('Infer Colorization', add_help=False)
     # For evaluation
-    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='models/icolorit_base_4ch_patch16_224.pth')
+    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='models/icolorit_tiny_4ch_patch16_224.pth')
     parser.add_argument('--model_args_path', type=str, help='args.pkl path of model', default='')
     parser.add_argument('--val_data_path', default='data/val/', type=str, help='validation dataset path')
     parser.add_argument('--val_hint_dir', type=str, help='hint directory for fixed validation', default='data/hint')
@@ -53,7 +53,7 @@ def get_args():
     parser.set_defaults(pin_mem=True)
 
     # Model parameters
-    parser.add_argument('--model', default='icolorit_base_4ch_patch16_224', type=str, help='Name of model to inference')
+    parser.add_argument('--model', default='icolorit_tiny_4ch_patch16_224', type=str, help='Name of model to inference')
     parser.add_argument('--use_rpb', action='store_true', help='relative positional bias')
     parser.add_argument('--no_use_rpb', action='store_false', dest='use_rpb')
     parser.set_defaults(use_rpb=True)
@@ -187,15 +187,28 @@ def main(args):
         pbar = tqdm(desc=f'Evaluate', ncols=100, total=len(data_loader_val) * len(args.val_hint_list))
         for step, batch in enumerate(data_loader_val):
             (images, bool_hints), targets, names = batch
+
+            # images size: torch.Size([10, 3, 224, 224]), max: 1.0, min: 0.0
+            # bool_hints size: torch.Size([10, 9, 112, 112]), max: 1.0, min: 0.0
+            # targets size: torch.Size([10]), max: 0, min: 0
+            # patch_size: (16, 16)
+
             B, _, H, W = images.shape
             h, w = H // patch_size[0], W // patch_size[1]
 
             # batch preparation
             images = images.to(device, non_blocking=True)
             images_lab = rgb2lab(images)
+
+
             images_patch = rearrange(images_lab, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)',
                                      p1=patch_size[0], p2=patch_size[1])
             labels = rearrange(images_patch, 'b n (p1 p2 c) -> b n (p1 p2) c', p1=patch_size[0], p2=patch_size[1])
+
+            # pp args.val_hint_list -- [0, 1, 2, 5, 10, 20, 50, 100, 200]
+            # bool_hints.size() -- torch.Size([10, 9, 112, 112])
+            # bool_hints.max(), bool_hints.min(), bool_hints.mean()
+            # (tensor(1.), tensor(0.), tensor(0.9966))
 
             for i, count in enumerate(args.val_hint_list):
                 bool_hint = bool_hints[:, i]

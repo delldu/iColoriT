@@ -17,6 +17,7 @@ from timm.models.layers import drop_path, to_2tuple
 from timm.models.layers import trunc_normal_ as __call_trunc_normal_
 from timm.models.registry import register_model
 
+import pdb
 
 def trunc_normal_(tensor, mean=0., std=1.):
     __call_trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
@@ -190,15 +191,19 @@ class PatchEmbed(nn.Module):
         self.mask_cent = mask_cent
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        # self.proj -- Conv2d(4, 192, kernel_size=(16, 16), stride=(16, 16))
 
     def forward(self, x, **kwargs):
+        # x.size() -- torch.Size([10, 4, 224, 224])
+        # kwargs -- {}
+
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        if self.mask_cent:
+        if self.mask_cent: # False
             x[:, -1] = x[:, -1] - 0.5
-        x = self.proj(x).flatten(2).transpose(1, 2)
+        x = self.proj(x).flatten(2).transpose(1, 2) # torch.Size([10, 196, 192])
         return x
 
 # sin-cos position encoding
@@ -206,6 +211,9 @@ class PatchEmbed(nn.Module):
 
 
 def get_sinusoid_encoding_table(n_position, d_hid):
+    # n_position = 196
+    # d_hid = 192
+
     ''' Sinusoid position encoding table '''
     # TODO: make it with torch instead of numpy
     def get_position_angle_vec(position):
@@ -215,34 +223,42 @@ def get_sinusoid_encoding_table(n_position, d_hid):
     sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
     sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
 
+    # sinusoid_table.shape -- (196, 192)
+
     return torch.FloatTensor(sinusoid_table).unsqueeze(0)
 
 ##################################### Colorization #################################
 
 
-class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
+# class DoubleConv(nn.Module):
+#     """(convolution => [BN] => ReLU) * 2"""
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
-        super().__init__()
-        if not mid_channels:
-            mid_channels = out_channels
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+#     def __init__(self, in_channels, out_channels, mid_channels=None):
+#         super().__init__()
+#         if not mid_channels:
+#             mid_channels = out_channels
+#         self.double_conv = nn.Sequential(
+#             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+#             nn.BatchNorm2d(mid_channels),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+#             nn.BatchNorm2d(out_channels),
+#             nn.ReLU(inplace=True)
+#         )
 
-    def forward(self, x):
-        return self.double_conv(x)
+#     def forward(self, x):
+#         return self.double_conv(x)
 
 
 class CnnHead(nn.Module):
     def __init__(self, embed_dim, num_classes, window_size):
         super().__init__()
+        # self = CnnHead(
+        #   (head): Conv2d(192, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), padding_mode=reflect)
+        # )
+        # embed_dim = 192
+        # num_classes = 512
+        # window_size = 14
         self.embed_dim = embed_dim
         self.num_classes = num_classes
         self.window_size = window_size
@@ -256,102 +272,103 @@ class CnnHead(nn.Module):
         return x
 
 
-class LocalAttentionHead(nn.Module):
-    def __init__(
-            self, dim, out_dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
-            proj_drop=0., attn_head_dim=None, use_rpb=False, window_size=14):
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        if attn_head_dim is not None:
-            head_dim = attn_head_dim
-        all_head_dim = head_dim * self.num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+# class LocalAttentionHead(nn.Module):
+#     def __init__(
+#             self, dim, out_dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
+#             proj_drop=0., attn_head_dim=None, use_rpb=False, window_size=14):
+#         super().__init__()
+#         self.num_heads = num_heads
+#         head_dim = dim // num_heads
+#         if attn_head_dim is not None:
+#             head_dim = attn_head_dim
+#         all_head_dim = head_dim * self.num_heads
+#         self.scale = qk_scale or head_dim ** -0.5
 
-        self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
-        if qkv_bias:
-            self.q_bias = nn.Parameter(torch.zeros(all_head_dim))
-            self.v_bias = nn.Parameter(torch.zeros(all_head_dim))
-        else:
-            self.q_bias = None
-            self.v_bias = None
+#         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
+#         if qkv_bias:
+#             self.q_bias = nn.Parameter(torch.zeros(all_head_dim))
+#             self.v_bias = nn.Parameter(torch.zeros(all_head_dim))
+#         else:
+#             self.q_bias = None
+#             self.v_bias = None
 
-        # masking attn
-        mask = torch.ones((window_size**2, window_size**2))
-        kernel_size = 3
-        for i in range(window_size):
-            for j in range(window_size):
-                cur_map = torch.ones((window_size, window_size))
-                stx, sty = max(i - kernel_size // 2, 0), max(j - kernel_size // 2, 0)
-                edx, edy = min(i + kernel_size // 2, window_size - 1), min(j + kernel_size // 2, window_size - 1)
-                cur_map[stx:edx + 1, sty:edy + 1] = 0
-                cur_map = cur_map.flatten()
-                mask[i * window_size + j] = cur_map
-        self.register_buffer('mask', mask)
+#         # masking attn
+#         mask = torch.ones((window_size**2, window_size**2))
+#         kernel_size = 3
+#         for i in range(window_size):
+#             for j in range(window_size):
+#                 cur_map = torch.ones((window_size, window_size))
+#                 stx, sty = max(i - kernel_size // 2, 0), max(j - kernel_size // 2, 0)
+#                 edx, edy = min(i + kernel_size // 2, window_size - 1), min(j + kernel_size // 2, window_size - 1)
+#                 cur_map[stx:edx + 1, sty:edy + 1] = 0
+#                 cur_map = cur_map.flatten()
+#                 mask[i * window_size + j] = cur_map
+#         self.register_buffer('mask', mask)
 
-        # relative positional bias option
-        self.use_rpb = use_rpb
-        if use_rpb:
-            self.window_size = window_size
-            self.rpb_table = nn.Parameter(torch.zeros((2 * window_size - 1) * (2 * window_size - 1), num_heads))
-            trunc_normal_(self.rpb_table, std=.02)
+#         # relative positional bias option
+#         self.use_rpb = use_rpb
+#         if use_rpb:
+#             self.window_size = window_size
+#             self.rpb_table = nn.Parameter(torch.zeros((2 * window_size - 1) * (2 * window_size - 1), num_heads))
+#             trunc_normal_(self.rpb_table, std=.02)
 
-            coords_h = torch.arange(window_size)
-            coords_w = torch.arange(window_size)
-            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, h, w
-            coords_flatten = torch.flatten(coords, 1)  # 2, h*w
-            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, h*w, h*w
-            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # h*w, h*w, 2
-            relative_coords[:, :, 0] += window_size - 1  # shift to start from 0
-            relative_coords[:, :, 1] += window_size - 1
-            relative_coords[:, :, 0] *= 2 * window_size - 1
-            relative_position_index = relative_coords.sum(-1)  # h*w, h*w
-            self.register_buffer("relative_position_index", relative_position_index)
+#             coords_h = torch.arange(window_size)
+#             coords_w = torch.arange(window_size)
+#             coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, h, w
+#             coords_flatten = torch.flatten(coords, 1)  # 2, h*w
+#             relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, h*w, h*w
+#             relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # h*w, h*w, 2
+#             relative_coords[:, :, 0] += window_size - 1  # shift to start from 0
+#             relative_coords[:, :, 1] += window_size - 1
+#             relative_coords[:, :, 0] *= 2 * window_size - 1
+#             relative_position_index = relative_coords.sum(-1)  # h*w, h*w
+#             self.register_buffer("relative_position_index", relative_position_index)
 
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(all_head_dim, out_dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+#         self.attn_drop = nn.Dropout(attn_drop)
+#         self.proj = nn.Linear(all_head_dim, out_dim)
+#         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: torch.Tensor):
-        B, N, C = x.shape
-        qkv_bias = None
-        if self.q_bias is not None:
-            qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
-        qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-        qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
+#     def forward(self, x: torch.Tensor):
+#         B, N, C = x.shape
+#         qkv_bias = None
+#         if self.q_bias is not None:
+#             qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
+#         qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
+#         qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+#         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
-        q = q * self.scale
-        attn = (q @ k.transpose(-2, -1))
+#         q = q * self.scale
+#         attn = (q @ k.transpose(-2, -1))
 
-        # masking attn
-        mask_value = max_neg_value(attn)
-        attn.masked_fill_(self.mask.bool(), mask_value)
+#         # masking attn
+#         mask_value = max_neg_value(attn)
+#         attn.masked_fill_(self.mask.bool(), mask_value)
 
-        if self.use_rpb:
-            relative_position_bias = self.rpb_table[self.relative_position_index.view(-1)].view(
-                self.window_size * self.window_size, self.window_size * self.window_size, -1)  # h*w,h*w,nH
-            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, h*w, h*w
-            attn += relative_position_bias
+#         if self.use_rpb:
+#             relative_position_bias = self.rpb_table[self.relative_position_index.view(-1)].view(
+#                 self.window_size * self.window_size, self.window_size * self.window_size, -1)  # h*w,h*w,nH
+#             relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, h*w, h*w
+#             attn += relative_position_bias
 
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+#         attn = attn.softmax(dim=-1)
+#         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+#         x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
+#         x = self.proj(x)
+#         x = self.proj_drop(x)
+#         return x
 
 
 class IColoriT(nn.Module):
     """ Vision Transformer with support for patch or hybrid CNN input stage
     """
 
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=512, embed_dim=512, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None,
-                 use_rpb=False, avg_hint=False, head_mode='default', mask_cent=False):
+    def __init__(self, img_size=224, patch_size=16, in_chans=4, num_classes=512, embed_dim=512, depth=12,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=0.0,
+                 use_rpb=True, avg_hint=True, head_mode='cnn', mask_cent=False):
         super().__init__()
+
         self.num_classes = num_classes
         assert num_classes == 2 * patch_size ** 2
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
@@ -377,18 +394,21 @@ class IColoriT(nn.Module):
 
         self.norm = norm_layer(embed_dim)
 
-        if head_mode == 'linear':
-            self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
-        elif head_mode == 'cnn':
-            self.head = CnnHead(embed_dim, num_classes, window_size=img_size // patch_size)
-        elif head_mode == 'locattn':
-            self.head = LocalAttentionHead(embed_dim, num_classes, window_size=img_size // patch_size)
-        else:
-            raise NotImplementedError('Check head type')
+        # if head_mode == 'linear':
+        #     self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        # elif head_mode == 'cnn':
+        #     self.head = CnnHead(embed_dim, num_classes, window_size=img_size // patch_size)
+        # elif head_mode == 'locattn':
+        #     self.head = LocalAttentionHead(embed_dim, num_classes, window_size=img_size // patch_size)
+        # else:
+        #     raise NotImplementedError('Check head type')
+
+        self.head = CnnHead(embed_dim, num_classes, window_size=img_size // patch_size)
 
         self.tanh = nn.Tanh()
 
         self.apply(self._init_weights)
+
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -399,28 +419,34 @@ class IColoriT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def get_num_layers(self):
-        return len(self.blocks)
+    # def get_num_layers(self):
+    #     return len(self.blocks)
 
     @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
-    def get_classifier(self):
-        return self.head
+    # def get_classifier(self):
+    #     return self.head
 
-    def reset_classifier(self, num_classes, global_pool=''):
-        self.num_classes = num_classes
-        self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+    # def reset_classifier(self, num_classes, global_pool=''):
+    #     self.num_classes = num_classes
+    #     self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x, mask):
+        # (Pdb) x.size() -- torch.Size([10, 3, 224, 224])
+        # x.max(), x.min() -- 0.6790, -0.5000
+
+        # (Pdb) mask.size() -- torch.Size([10, 12544]), most of mask is True
+        # 224 * 224 /4 -- 12544
+
         # mask is 1D of 2D if 2D
         B, _, H, W = x.shape
         assert mask.dim() == 2, f'Check the mask dimension mask.dim() == 2 but {mask.dim()}.'
 
         _, L = mask.shape
         # assume square inputs
-        hint_size = int(math.sqrt(H * W // L))
+        hint_size = int(math.sqrt(H * W // L)) # -- 2
         _device = '.cuda' if x.device.type == 'cuda' else ''
 
         # hint location = 0, non-hint location = 1
@@ -430,7 +456,7 @@ class IColoriT(nn.Module):
         full_mask = _full_mask.type(f'torch{_device}.BoolTensor')
 
         # mask ab channels
-        if self.avg_hint:
+        if self.avg_hint: # True
             _avg_x = F.interpolate(x, size=(H // hint_size, W // hint_size), mode='bilinear')
             _avg_x[:, 1, :, :].masked_fill_(mask.squeeze(1), 0)
             _avg_x[:, 2, :, :].masked_fill_(mask.squeeze(1), 0)
@@ -440,8 +466,8 @@ class IColoriT(nn.Module):
             x[:, 1, :, :].masked_fill_(full_mask.squeeze(1), 0)
             x[:, 2, :, :].masked_fill_(full_mask.squeeze(1), 0)
 
-        if self.in_chans == 4:
-            x = torch.cat((x, 1 - _full_mask), dim=1)
+        if self.in_chans == 4: # True
+            x = torch.cat((x, 1.0 - _full_mask), dim=1)
 
         x = self.patch_embed(x)
         x = x + self.pos_embed.type_as(x).to(x.device).clone().detach()  # (B, 14*14, 768)
@@ -449,12 +475,17 @@ class IColoriT(nn.Module):
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
+        # x.size() -- torch.Size([10, 196, 192])
+
         return x
 
     def forward(self, x, mask):
-        x = self.forward_features(x, mask)
+        # (Pdb) x.size(), mask.size()
+        # (torch.Size([10, 3, 224, 224]), torch.Size([10, 12544]))
+        x = self.forward_features(x, mask) # torch.Size([10, 196, 192])
         x = self.head(x)
         x = self.tanh(x)
+        # x.size() -- torch.Size([10, 196, 512])
         return x
 
 
@@ -550,6 +581,9 @@ def icolorit_small_4ch_patch16_224(pretrained=False, **kwargs):
             kwargs["init_ckpt"], map_location="cpu"
         )
         model.load_state_dict(checkpoint["model"])
+
+        pdb.set_trace()
+
     return model
 
 

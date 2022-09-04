@@ -643,7 +643,8 @@ def rgb2lab(rgb, l_cent=50, l_norm=100, ab_norm=110):
     l_rs = (lab[:, [0], :, :] - l_cent) / l_norm
     ab_rs = lab[:, 1:, :, :] / ab_norm
     out = torch.cat((l_rs, ab_rs), dim=1)
-
+    # l_rs [-0.5, 0.5]
+    # ab_rs [-1.0, 1.0]
     return out
 
 
