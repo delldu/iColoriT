@@ -17,6 +17,8 @@ from timm.models.layers import drop_path, to_2tuple
 from timm.models.layers import trunc_normal_ as __call_trunc_normal_
 from timm.models.registry import register_model
 
+from einops.layers.torch import Rearrange
+
 import pdb
 
 def trunc_normal_(tensor, mean=0., std=1.):
@@ -84,6 +86,8 @@ class Attention(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
+        print("qkv_bias -------------- ", qkv_bias)
+
         if qkv_bias:
             self.q_bias = nn.Parameter(torch.zeros(all_head_dim))
             self.v_bias = nn.Parameter(torch.zeros(all_head_dim))
@@ -154,16 +158,22 @@ class Block(nn.Module):
             attn_drop=attn_drop, proj_drop=drop, attn_head_dim=attn_head_dim,
             use_rpb=use_rpb, window_size=window_size)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+
+        # print("------ drop_path: ", drop_path)
+
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
+        # print("------ init_values: ", init_values)
         if init_values > 0:
             self.gamma_1 = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)
             self.gamma_2 = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)
         else:
             self.gamma_1, self.gamma_2 = None, None
+
+        # print("------ self.gamma_1: ", self.gamma_1)
 
     def forward(self, x):
         if self.gamma_1 is None:
@@ -480,13 +490,21 @@ class IColoriT(nn.Module):
         return x
 
     def forward(self, x, mask):
+        B, C, H, W = x.shape
+        h = H//self.patch_size
+        w = W//self.patch_size
+
         # (Pdb) x.size(), mask.size()
         # (torch.Size([10, 3, 224, 224]), torch.Size([10, 12544]))
         x = self.forward_features(x, mask) # torch.Size([10, 196, 192])
         x = self.head(x)
         x = self.tanh(x)
         # x.size() -- torch.Size([10, 196, 512])
-        return x
+
+        ab = rearrange(x, 'b n (p1 p2 c) -> b n (p1 p2) c', p1=self.patch_size, p2=self.patch_size)
+        ab = rearrange(ab, 'b (h w) (p1 p2) c -> b c (h p1) (w p2)',
+                        h=h, w=w, p1=self.patch_size, p2=self.patch_size)
+        return ab
 
 
 @register_model

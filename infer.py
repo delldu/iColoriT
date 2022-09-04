@@ -31,10 +31,13 @@ from datasets import build_fixed_validation_dataset
 from utils import lab2rgb, psnr, rgb2lab, seed_worker
 import pdb
 
+from einops.layers.torch import Rearrange
+
+
 def get_args():
     parser = argparse.ArgumentParser('Infer Colorization', add_help=False)
     # For evaluation
-    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='models/icolorit_tiny_4ch_patch16_224.pth')
+    parser.add_argument('--model_path', type=str, help='checkpoint path of model', default='models/icolorit_small_4ch_patch16_224.pth')
     parser.add_argument('--model_args_path', type=str, help='args.pkl path of model', default='')
     parser.add_argument('--val_data_path', default='data/val/', type=str, help='validation dataset path')
     parser.add_argument('--val_hint_dir', type=str, help='hint directory for fixed validation', default='data/hint')
@@ -53,7 +56,7 @@ def get_args():
     parser.set_defaults(pin_mem=True)
 
     # Model parameters
-    parser.add_argument('--model', default='icolorit_tiny_4ch_patch16_224', type=str, help='Name of model to inference')
+    parser.add_argument('--model', default='icolorit_small_4ch_patch16_224', type=str, help='Name of model to inference')
     parser.add_argument('--use_rpb', action='store_true', help='relative positional bias')
     parser.add_argument('--no_use_rpb', action='store_false', dest='use_rpb')
     parser.set_defaults(use_rpb=True)
@@ -104,7 +107,7 @@ def get_args():
 def get_model(args):
     print(f"Creating model: {args.model}")
     model = create_model(
-        args.model, # icolorit_base_4ch_patch16_224
+        args.model, # icolorit_small_4ch_patch16_224
         pretrained=False,
         drop_path_rate=args.drop_path, # 0
         drop_block_rate=None,
@@ -113,11 +116,12 @@ def get_model(args):
         head_mode=args.head_mode, # cnn
         mask_cent=args.mask_cent,
     )
-    # model -- icolorit_base_4ch_patch16_224, IColoriT
+    # model -- icolorit_small_4ch_patch16_224, IColoriT
 
-    # checkpoint = torch.load("models/icolorit_base_4ch_patch16_224.pth")
     # checkpoint = torch.load("models/icolorit_small_4ch_patch16_224.pth")
-    checkpoint = torch.load("models/icolorit_tiny_4ch_patch16_224.pth")
+    # model.load_state_dict(checkpoint['model'])
+    # torch.save(model.state_dict(), "/tmp/image_icolor.pth")
+
     # Namespace(
     #     model='colorit_tiny_4ch_patch16_224', 
     #     mask_root_dir='2022ECCV_colorization/ctest10k_mask/1234', 
@@ -216,13 +220,9 @@ def main(args):
 
                 with torch.cuda.amp.autocast():
                     outputs = model(images_lab.clone(), bool_hint.clone())
-                    outputs = rearrange(outputs, 'b n (p1 p2 c) -> b n (p1 p2) c', p1=patch_size[0], p2=patch_size[1])
 
-                pred_imgs_lab = torch.cat((labels[:, :, :, 0].unsqueeze(3), outputs), dim=3)
-                pred_imgs_lab = rearrange(pred_imgs_lab, 'b (h w) (p1 p2) c -> b c (h p1) (w p2)',
-                                          h=h, w=w, p1=patch_size[0], p2=patch_size[1])
+                pred_imgs_lab = torch.cat((images_lab[:, 0:1, :, :], outputs), dim=1)
                 pred_imgs = lab2rgb(pred_imgs_lab)
-
                 psnr_sum[count] += psnr(images, pred_imgs).item() * B
 
                 if args.pred_dir is not None:

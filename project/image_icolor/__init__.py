@@ -33,18 +33,17 @@ def get_model():
     cdir = os.path.dirname(__file__)
     checkpoint = model_path if cdir == "" else cdir + "/" + model_path
 
-    model = color.Generator()
+    model = color.IColoriT()
 
     todos.model.load(model, checkpoint)
     device = todos.model.get_device()
     model = model.to(device)
     model.eval()
 
-    model = torch.jit.script(model)
-
-    todos.data.mkdir("output")
-    if not os.path.exists("output/image_icolor.torch"):
-        model.save("output/image_icolor.torch")
+    # model = torch.jit.script(model)
+    # todos.data.mkdir("output")
+    # if not os.path.exists("output/image_icolor.torch"):
+    #     model.save("output/image_icolor.torch")
 
     return model, device
 
@@ -104,6 +103,8 @@ def image_predict(input_files, output_dir):
 
         # orig input
         input_tensor = todos.data.load_rgba_tensor(filename)
+        input_tensor = todos.data.resize_tensor(input_tensor, 224, 224)
+
         input_tensor = data.color_sample(input_tensor, 0.01)
         # pytorch recommand clone.detach instead of torch.Tensor(input_tensor)
         orig_tensor = input_tensor.clone().detach()
