@@ -210,7 +210,7 @@ class IColor(nn.Module):
         patch_size=16,
         in_chans=4,
         num_classes=512,
-        embed_dim=384,s
+        embed_dim=384,
         depth=12,
         num_heads=6,
         mlp_ratio=4.0,
