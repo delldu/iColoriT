@@ -78,6 +78,7 @@ class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
                  proj_drop=0., attn_head_dim=None, use_rpb=False, window_size=14):
         super().__init__()
+
         self.num_heads = num_heads
         head_dim = dim // num_heads
         if attn_head_dim is not None:

@@ -83,7 +83,7 @@ def lab2xyz(lab):
     out = torch.cat((x_int[:, None, :, :], y_int[:, None, :, :], z_int[:, None, :, :]), dim=1)
     mask = (out > 0.2068966).float().to(lab.device)
 
-    out = (out**3.0) * mask + (out - 16.0 / 116.0) / 7.787 * (1.0 - mask)
+    out = (out ** 3.0) * mask + (out - 16.0 / 116.0) / 7.787 * (1.0 - mask)
 
     sc = torch.tensor((0.95047, 1.0, 1.08883))[None, :, None, None]
     sc = sc.to(out.device)
@@ -141,7 +141,7 @@ def color_sample(rgba, p=0.01):
     rgba[:, 2:3, :, :] = gray
 
     while total > 0:
-        P = random.choice([2, 4, 6, 8])  # patch size
+        P = random.choice([2, 3, 4])  # patch size
         # uniform distribution
         h = random.randint(0, H - P + 1)
         w = random.randint(0, W - P + 1)

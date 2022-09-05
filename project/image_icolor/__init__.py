@@ -23,8 +23,6 @@ from . import data, color
 
 import pdb
 
-ICOLOR_ZEROPAD_TIMES = 16
-
 
 def get_model():
     """Create model."""
@@ -33,28 +31,32 @@ def get_model():
     cdir = os.path.dirname(__file__)
     checkpoint = model_path if cdir == "" else cdir + "/" + model_path
 
-    model = color.IColoriT()
+    model = color.IColor()
 
     todos.model.load(model, checkpoint)
     device = todos.model.get_device()
     model = model.to(device)
     model.eval()
 
-    # model = torch.jit.script(model)
-    # todos.data.mkdir("output")
-    # if not os.path.exists("output/image_icolor.torch"):
-    #     model.save("output/image_icolor.torch")
+    model = torch.jit.script(model)
+    todos.data.mkdir("output")
+    if not os.path.exists("output/image_icolor.torch"):
+        model.save("output/image_icolor.torch")
 
     return model, device
 
 
 def model_forward(model, device, input_tensor):
     # zeropad for model
-    H, W = input_tensor.size(2), input_tensor.size(3)
-    if H % ICOLOR_ZEROPAD_TIMES != 0 or W % ICOLOR_ZEROPAD_TIMES != 0:
-        input_tensor = todos.data.zeropad_tensor(input_tensor, times=ICOLOR_ZEROPAD_TIMES)
-    output_tensor = todos.model.forward(model, device, input_tensor)
-    return output_tensor[:, :, 0:H, 0:W]
+
+    # ICOLOR_ZEROPAD_TIMES = 16
+    # H, W = input_tensor.size(2), input_tensor.size(3)
+    # if H % ICOLOR_ZEROPAD_TIMES != 0 or W % ICOLOR_ZEROPAD_TIMES != 0:
+    #     input_tensor = todos.data.zeropad_tensor(input_tensor, times=ICOLOR_ZEROPAD_TIMES)
+    # output_tensor = todos.model.forward(model, device, input_tensor)
+    # return output_tensor[:, :, 0:H, 0:W]
+
+    return todos.model.forward(model, device, input_tensor)
 
 
 def image_client(name, input_files, output_dir):
@@ -103,9 +105,8 @@ def image_predict(input_files, output_dir):
 
         # orig input
         input_tensor = todos.data.load_rgba_tensor(filename)
-        input_tensor = todos.data.resize_tensor(input_tensor, 224, 224)
+        input_tensor = data.color_sample(input_tensor, 0.05)
 
-        input_tensor = data.color_sample(input_tensor, 0.01)
         # pytorch recommand clone.detach instead of torch.Tensor(input_tensor)
         orig_tensor = input_tensor.clone().detach()
         predict_tensor = model_forward(model, device, input_tensor)
