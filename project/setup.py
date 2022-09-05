@@ -15,16 +15,16 @@ with open("README.md", "r") as file:
     long_description = file.read()
 
 setup(
-    name="image_icolor",
+    name="image_colour",
     version="1.0.0",
     author="Dell Du",
     author_email="18588220928@163.com",
-    description="image icolor package",
+    description="image colour package",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/delldu/iColoriT.git",
-    packages=["image_icolor"],
-    package_data={"image_icolor": ["models/image_icolor.pth"]},
+    packages=["image_colour"],
+    package_data={"image_colour": ["models/image_colour.pth"]},
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",

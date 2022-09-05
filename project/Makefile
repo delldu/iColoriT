@@ -13,7 +13,7 @@ install:
 	python setup.py install
 
 uninstall:
-	pip uninstall image_icolor
+	pip uninstall image_colour
 
 clean:
-	rm -rf build dist image_icolor.egg-info __pycache__
+	rm -rf build dist image_colour.egg-info __pycache__
