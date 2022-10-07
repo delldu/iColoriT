@@ -63,7 +63,7 @@ class Attention(nn.Module):
 
         coords_h = torch.arange(window_size)
         coords_w = torch.arange(window_size)
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, h, w
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w], indexing='ij'))  # 2, h, w
         coords_flatten = torch.flatten(coords, 1)  # 2, h*w
         relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, h*w, h*w
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # h*w, h*w, 2

@@ -52,10 +52,7 @@ def model_forward(model, device, input_tensor, multi_times=1):
     if H % multi_times != 0 or W % multi_times != 0:
         input_tensor = todos.data.zeropad_tensor(input_tensor, times=multi_times)
 
-    torch.cuda.synchronize()
-    with torch.jit.optimized_execution(False):
-        output_tensor = todos.model.forward(model, device, input_tensor)
-    torch.cuda.synchronize()
+    output_tensor = todos.model.forward(model, device, input_tensor)
 
     return output_tensor[:, :, 0:H, 0:W]
 
@@ -66,7 +63,7 @@ def image_client(name, input_files, output_dir):
     image_filenames = todos.data.load_files(input_files)
     for filename in image_filenames:
         output_file = f"{output_dir}/{os.path.basename(filename)}"
-        context = cmd.color(filename, output_file)
+        context = cmd.colour(filename, output_file)
         redo.set_queue_task(context)
     print(f"Created {len(image_filenames)} tasks for {name}.")
 
